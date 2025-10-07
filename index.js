@@ -160,13 +160,11 @@ app.get('/test', (req, res) => {
   res.json({ ok: true, now: new Date().toISOString(), tip: 'GET /api/schedule' });
 });
 
-// Racine
-app.get('/', (req, res) => {
-  res.json({
-    message: '📅 API Emploi du Temps CESI',
-    endpoints: ['/api/schedule - Emploi du temps du jour', '/test - Test de l\'API']
-  });
-});
+// Alias pratique
+app.get('/schedule', (req, res) => res.redirect(302, '/api/schedule'));
+
+// Racine: redirige vers l'emploi du temps
+app.get('/', (req, res) => res.redirect(302, '/api/schedule'));
 
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
