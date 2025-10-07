@@ -78,14 +78,48 @@ function extractLocation(event) {
   return loc;
 }
 
+// Essaie d'extraire la salle depuis le résumé si elle y est mentionnée
+function extractRoomFromSummary(summary) {
+  if (!summary) return '';
+  let room = '';
+  // (Salle XYZ) ou (Room XYZ)
+  let m = /\((?:\s*(?:salle|room)\s*[:\-]?\s*)?([^()]+)\)/i.exec(summary);
+  if (m && m[1] && /(salle|room)/i.test(summary)) {
+    room = m[1].trim();
+  }
+  // "- Salle XYZ" ou "– Salle XYZ"
+  if (!room) {
+    m = /[\-–]\s*(?:salle|room)\s*[:\-]?\s*([^\n\r]+)$/i.exec(summary);
+    if (m && m[1]) room = m[1].trim();
+  }
+  // "Salle XYZ" simple
+  if (!room) {
+    m = /(salle|room)\s*[:\-]?\s*([A-Za-z0-9\- ]{1,20})/i.exec(summary);
+    if (m && m[2]) room = m[2].trim();
+  }
+  return room;
+}
+
+// Nettoie le résumé pour enlever la salle si on l'affiche séparément
+function cleanSummary(summary) {
+  if (!summary) return '';
+  let s = summary;
+  s = s.replace(/\((?:\s*(?:salle|room)\s*[:\-]?\s*)?[^()]+\)/gi, ' ').trim();
+  s = s.replace(/[\-–]\s*(?:salle|room)\s*[:\-]?\s*[^\n\r]+$/gi, ' ').trim();
+  s = s.replace(/\s{2,}/g, ' ').trim();
+  return s;
+}
+
 app.get('/api/schedule', async (req, res) => {
   try {
     const data = await ical.fromURL(ICS_URL, { defaultTimezone: 'Europe/Paris' });
     const all = Object.values(data).filter(e => e && e.type === 'VEVENT');
 
-    const now = new Date();
-    const todayKey = dateKeyParis(now);
-    const weekday = weekdayParis(now); // ex: "mardi"
+  const now = new Date();
+  const todayKey = dateKeyParis(now);
+  const weekday = weekdayParis(now); // ex: "mardi"
+  const nowParts = timePartsParis(now);
+  const nowMinParis = nowParts.h * 60 + nowParts.m;
 
     // Garder uniquement les événements qui commencent aujourd'hui (heure Paris)
     const todayEvents = [];
@@ -99,12 +133,18 @@ app.get('/api/schedule', async (req, res) => {
       const endMin = endHM.h * 60 + endHM.m;
       if (endMin <= startMin) continue;
 
+      const rawSummary = (e.summary || '').trim();
+      const locFromEvent = extractLocation(e);
+      const locFromSummary = extractRoomFromSummary(rawSummary);
+      const location = (locFromEvent || locFromSummary || '').trim();
+      const summary = cleanSummary(rawSummary);
+
       todayEvents.push({
-        summary: (e.summary || '').trim(),
-        emoji: getEmoji(e.summary || ''),
+        summary,
+        emoji: getEmoji(rawSummary),
         startMin,
         endMin,
-        location: extractLocation(e)
+        location
       });
     }
 
@@ -129,25 +169,29 @@ app.get('/api/schedule', async (req, res) => {
     // Trier chronologiquement
     todayEvents.sort((a, b) => a.startMin - b.startMin);
 
-    // Construire le texte
+    // Construire le texte: une ligne par événement (idéal pour iPhone)
     let text = '';
+    let lines = [];
+    const dayName = weekday.charAt(0).toUpperCase() + weekday.slice(1);
+    const dateFR = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris' }).format(new Date());
+
     if (todayEvents.length) {
-      const dayName = weekday.charAt(0).toUpperCase() + weekday.slice(1);
-      text += `🎉 Salut ! Voici ton programme pour aujourd'hui, ${dayName} :\n\n`;
+      lines.push(`📅 Aujourd'hui — ${dayName} ${dateFR}`);
       for (const ev of todayEvents) {
         const start = toHHMM(ev.startMin);
         const end = toHHMM(ev.endMin);
         const dur = formatDuration(ev.endMin - ev.startMin);
-        const loc = ev.location ? ` 📍 ${ev.location}` : '';
-        text += `${ev.emoji} ${start} - ${end} (${dur})\n   ${ev.summary}${loc}\n`;
+        const pin = ev.location ? ` • 📍 ${ev.location}` : '';
+        const nowFlag = (nowMinParis >= ev.startMin && nowMinParis < ev.endMin) ? '🟢 ' : '';
+        lines.push(`${nowFlag}${ev.emoji} ${start}–${end} • ${ev.summary}${pin} • ⏱️ ${dur}`);
       }
-      text += `\n💪 Bonne journée et bon courage ! 🌟`;
+      text = lines.join('\n');
     } else {
-      const dayName = weekday.charAt(0).toUpperCase() + weekday.slice(1);
-      text = `Rien de prévu aujourd'hui (${dayName}) ! 🎉 Profite bien de ta journée libre !`;
+      text = `Rien de prévu aujourd'hui (${dayName}) ! 🎉`;
+      lines = [text];
     }
 
-    res.json({ schedule: text, date: todayKey, count: todayEvents.length });
+    res.json({ schedule: text, date: todayKey, count: todayEvents.length, lines });
   } catch (err) {
     console.error('Erreur /api/schedule:', err);
     res.status(500).json({ schedule: "⚠️ Erreur serveur. Vérifie l'URL ICS ou réessaie." });
