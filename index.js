@@ -78,34 +78,47 @@ function extractLocation(event) {
   return loc;
 }
 
-// Essaie d'extraire la salle depuis le résumé si elle y est mentionnée
+// Normalisation simple du texte (enlève HTML et espaces spéciaux)
+function normalizeText(str = '') {
+  return String(str)
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+// Tente d'extraire une salle à partir d'une chaîne générique
+function pickRoomFromString(input = '') {
+  const s = normalizeText(input);
+  if (!s) return '';
+  let m;
+  // 1) Mots-clés directs
+  m = /(?:Salle|Room|Local|Lieu|Amphi|Bât(?:iment)?|Bat(?:iment)?)\s*[:\-]?\s*([^\n\r;|,]+)/i.exec(s);
+  if (m && m[1]) return m[1].trim();
+  // 2) Parenthèses avec contenu plausible (ex: B101, A203, LAB 2)
+  m = /\(([A-Za-z]{1,4}\s?-?\d{1,4}[A-Za-z]?)\)/.exec(s);
+  if (m && m[1]) return m[1].trim();
+  // 3) Dernier segment après tirets ou barres avec longueur raisonnable
+  const parts = s.split(/\s*[>|-]|\s\|\s|\s,\s/).map(t => t.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    const last = parts[parts.length - 1];
+    if (last.length <= 24) return last;
+  }
+  return '';
+}
+
+// Essaie d'extraire la salle depuis le résumé
 function extractRoomFromSummary(summary) {
-  if (!summary) return '';
-  let room = '';
-  // (Salle XYZ) ou (Room XYZ)
-  let m = /\((?:\s*(?:salle|room)\s*[:\-]?\s*)?([^()]+)\)/i.exec(summary);
-  if (m && m[1] && /(salle|room)/i.test(summary)) {
-    room = m[1].trim();
-  }
-  // "- Salle XYZ" ou "– Salle XYZ"
-  if (!room) {
-    m = /[\-–]\s*(?:salle|room)\s*[:\-]?\s*([^\n\r]+)$/i.exec(summary);
-    if (m && m[1]) room = m[1].trim();
-  }
-  // "Salle XYZ" simple
-  if (!room) {
-    m = /(salle|room)\s*[:\-]?\s*([A-Za-z0-9\- ]{1,20})/i.exec(summary);
-    if (m && m[2]) room = m[2].trim();
-  }
-  return room;
+  return pickRoomFromString(summary);
 }
 
 // Nettoie le résumé pour enlever la salle si on l'affiche séparément
 function cleanSummary(summary) {
   if (!summary) return '';
-  let s = summary;
-  s = s.replace(/\((?:\s*(?:salle|room)\s*[:\-]?\s*)?[^()]+\)/gi, ' ').trim();
-  s = s.replace(/[\-–]\s*(?:salle|room)\s*[:\-]?\s*[^\n\r]+$/gi, ' ').trim();
+  let s = normalizeText(summary);
+  s = s.replace(/\((?:\s*(?:salle|room|local|lieu|amphi)\s*[:\-]?\s*)?[^()]+\)/gi, ' ').trim();
+  s = s.replace(/[\-–]\s*(?:salle|room|local|lieu|amphi)\s*[:\-]?\s*[^\n\r]+$/gi, ' ').trim();
   s = s.replace(/\s{2,}/g, ' ').trim();
   return s;
 }
@@ -133,10 +146,11 @@ app.get('/api/schedule', async (req, res) => {
       const endMin = endHM.h * 60 + endHM.m;
       if (endMin <= startMin) continue;
 
-      const rawSummary = (e.summary || '').trim();
-      const locFromEvent = extractLocation(e);
-      const locFromSummary = extractRoomFromSummary(rawSummary);
-      const location = (locFromEvent || locFromSummary || '').trim();
+  const rawSummary = (e.summary || '').trim();
+  const locFromEvent = pickRoomFromString(e.location || '') || extractLocation(e);
+  const locFromDesc = pickRoomFromString(e.description || '');
+  const locFromSummary = extractRoomFromSummary(rawSummary);
+  const location = (locFromEvent || locFromDesc || locFromSummary || '').trim();
       const summary = cleanSummary(rawSummary);
 
       todayEvents.push({
