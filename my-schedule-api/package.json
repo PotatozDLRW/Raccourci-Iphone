@@ -1,0 +1,26 @@
+{
+  "name": "my-schedule-api",
+  "version": "1.0.0",
+  "description": "API Vercel pour récupérer et formater l'emploi du temps depuis un calendrier ICS",
+  "main": "api/schedule.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "vercel",
+    "api",
+    "ics",
+    "calendar",
+    "schedule"
+  ],
+  "author": "Votre nom",
+  "license": "MIT",
+  "dependencies": {
+    "node-ical": "^0.16.1",
+    "node-fetch": "^2.6.7"
+  },
+  "engines": {
+    "node": ">=14.x"
+  }
+}
