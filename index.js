@@ -199,13 +199,23 @@ app.get('/api/schedule', async (req, res) => {
         const nowFlag = (nowMinParis >= ev.startMin && nowMinParis < ev.endMin) ? '🟢 ' : '';
         lines.push(`${nowFlag}${ev.emoji} ${start}–${end} • ${ev.summary}${pin} • ⏱️ ${dur}`);
       }
-      text = lines.join('\n');
+      // Ajoute un saut de ligne entre chaque événement dans 'schedule' pour meilleure lisibilité iPhone
+      const header = lines[0];
+      const eventLines = lines.slice(1);
+      const spacedLines = [header, ''];
+      eventLines.forEach((ln, i) => {
+        spacedLines.push(ln);
+        if (i !== eventLines.length - 1) spacedLines.push('');
+      });
+      text = spacedLines.join('\n');
+      // Expose aussi la version espacée séparément si besoin
+      res.locals.linesSpaced = spacedLines;
     } else {
       text = `Rien de prévu aujourd'hui (${dayName}) ! 🎉`;
       lines = [text];
     }
 
-    res.json({ schedule: text, date: todayKey, count: todayEvents.length, lines });
+  res.json({ schedule: text, date: todayKey, count: todayEvents.length, lines, linesSpaced: res.locals.linesSpaced });
   } catch (err) {
     console.error('Erreur /api/schedule:', err);
     res.status(500).json({ schedule: "⚠️ Erreur serveur. Vérifie l'URL ICS ou réessaie." });
