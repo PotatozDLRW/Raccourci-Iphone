@@ -1,13 +1,5 @@
 {
   "version": 2,
-  "functions": {
-    "api/schedule.js": {
-      "runtime": "nodejs18.x"
-    },
-    "schedule.js": {
-      "runtime": "nodejs18.x"
-    }
-  },
   "headers": [
     {
       "source": "/api/(.*)",
