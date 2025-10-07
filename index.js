@@ -123,6 +123,27 @@ function cleanSummary(summary) {
   return s;
 }
 
+// Raccourcit une info salle pour un affichage concis (ex: "B101", "Amphi 2", "Lab 3")
+function canonicalizeRoom(roomRaw = '') {
+  const s = normalizeText(roomRaw);
+  if (!s) return '';
+  let m;
+  // Amphi 2 / Amphithéâtre 2
+  m = /(amphi(?:th[eé]âtre)?)[\s:]*([A-Za-z0-9]+)/i.exec(s);
+  if (m) return `${m[1].charAt(0).toUpperCase()}${m[1].slice(1).toLowerCase()} ${m[2].toUpperCase()}`.replace('Amphitheatre','Amphi');
+  // Codes type B101 / A203 / C-204 / E12
+  m = /\b([A-Z]{1,3}\s?-?\d{2,4}[A-Z]?)\b/.exec(s.toUpperCase());
+  if (m) return m[1].replace(/\s+/g, '');
+  // "Salle B101" / "Room A12" / "Local 3"
+  m = /(salle|room|local)[\s:]*([A-Za-z]{0,3}\s?-?\d{1,4}[A-Za-z]?)/i.exec(s);
+  if (m) return `${m[2]}`.replace(/\s+/g, '').toUpperCase();
+  // "Lab 2" / "Atelier 1"
+  m = /(lab|atelier)[\s:]*([A-Za-z0-9]+)/i.exec(s);
+  if (m) return `${m[1].charAt(0).toUpperCase()}${m[1].slice(1).toLowerCase()} ${m[2].toUpperCase()}`;
+  // Sinon, retourne un segment court
+  return s.length > 24 ? s.slice(0, 24) : s;
+}
+
 app.get('/api/schedule', async (req, res) => {
   try {
     const data = await ical.fromURL(ICS_URL, { defaultTimezone: 'Europe/Paris' });
@@ -194,10 +215,11 @@ app.get('/api/schedule', async (req, res) => {
       for (const ev of todayEvents) {
         const start = toHHMM(ev.startMin);
         const end = toHHMM(ev.endMin);
-        const dur = formatDuration(ev.endMin - ev.startMin);
-        const pin = ev.location ? ` • 📍 ${ev.location}` : '';
+        const room = ev.location ? canonicalizeRoom(ev.location) : '';
+        const pin = room ? ` • 📍 ${room}` : '';
         const nowFlag = (nowMinParis >= ev.startMin && nowMinParis < ev.endMin) ? '🟢 ' : '';
-        lines.push(`${nowFlag}${ev.emoji} ${start}–${end} • ${ev.summary}${pin} • ⏱️ ${dur}`);
+        // Durée retirée pour un affichage plus court
+        lines.push(`${nowFlag}${ev.emoji} ${start}–${end} • ${ev.summary}${pin}`);
       }
       // Ajoute un saut de ligne entre chaque événement dans 'schedule' pour meilleure lisibilité iPhone
       const header = lines[0];
